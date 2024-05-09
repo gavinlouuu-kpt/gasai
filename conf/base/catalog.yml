@@ -1,0 +1,9 @@
+s3_conc_aligned_df:
+  type: pandas.ParquetDataset
+  filepath: s3://gas-ml/2023_one_acetone/conc_aligned_df.pq
+  credentials: dev_s3
+
+# local_conc_aligned_df:
+#   type: pandas.ParquetDataset
+#   filepath: data/03_primary/conc_aligned_df.pq
+
