@@ -64,9 +64,9 @@ def scale_sequences(sequences_train, sequences_test):
     return sequences_train_scaled, sequences_test_scaled
 
 
-def convert_to_tensors(sequences_train, sequences_test, targets_train, targets_test):
-    train_sequences_tensor = torch.tensor(sequences_train, dtype=torch.float32)
-    test_sequences_tensor = torch.tensor(sequences_test, dtype=torch.float32)
+def convert_to_tensors(sequences_train_scaled, sequences_test_scaled, targets_train, targets_test):
+    train_sequences_tensor = torch.tensor(sequences_train_scaled, dtype=torch.float32)
+    test_sequences_tensor = torch.tensor(sequences_test_scaled, dtype=torch.float32)
     train_targets_tensor = torch.tensor(targets_train, dtype=torch.float32)
     test_targets_tensor = torch.tensor(targets_test, dtype=torch.float32)
     return train_sequences_tensor, test_sequences_tensor, train_targets_tensor, test_targets_tensor
