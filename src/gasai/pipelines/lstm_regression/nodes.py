@@ -1,5 +1,5 @@
 
-from importance_calculator import process_experiments, setup_directory, spec_exp_imp
+# from importance_calculator import process_experiments, setup_directory, spec_exp_imp
 # load data from catalog
 import os
 import numpy as np
@@ -18,8 +18,6 @@ from typing import Dict
 from torch.utils.data import TensorDataset, DataLoader
 from captum.attr import IntegratedGradients
 
-
-device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
 
 def sequence_generate(data_set: pd.DataFrame, parameters: Dict):
     # Initialize lists to hold sequences and targets
@@ -94,6 +92,7 @@ class RNN(nn.Module):
         
     def forward(self, x):
         # Set initial hidden states (and cell states for LSTM)
+        device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
         h0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(device) 
         c0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(device) 
         out, _ = self.lstm(x, (h0,c0))  
@@ -179,13 +178,6 @@ def plot_metrics(training_losses, validation_rmses, epoch, session_checkpoint_di
     plt.close()
 
 
-# Check if CUDA is available, if not, check for MPS (Metal Performance Shaders for Apple Silicon), otherwise use CPU
-
-# load aligned_df from path
-file_path = "aligned_df.pq"
-data_set = pd.read_parquet(file_path)
-
-
 # Define the compute_importances function
 def compute_importances(model, input_sequence):
     # Initialize IntegratedGradients with the model
@@ -227,44 +219,21 @@ def layer_importances(model, data_set, features, sequence_length):
 
     return experiment_importances
 
-
-def main():
+def train_model(train_loader, test_loader, parameters: Dict):
     device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
     
-    file_path = "aligned_df.pq"
-    data_set = pd.read_parquet(file_path)
-
-    features = ['timestamp_bin', 'A1_Resistance', 'A1_Resistance_diff'] #
-    target_column = 'resistance_ratio' #
-    sequence_length = 100 #
-    step_size = 1 #
-    sequences_np, targets_np = sequence_generate(sequence_length, data_set, features, target_column, step_size)
-
-    sequences_train, sequences_test, targets_train, targets_test = split_data(sequences_np, targets_np)
-    sequences_train_scaled, sequences_test_scaled = scale_sequences(sequences_train, sequences_test)
-
-    batch_size = 32 #
-    train_sequences_tensor, test_sequences_tensor, train_targets_tensor, test_targets_tensor = convert_to_tensors(
-        sequences_train_scaled, sequences_test_scaled, targets_train, targets_test)
-    train_loader, test_loader = create_dataloaders(
-        train_sequences_tensor, train_targets_tensor, test_sequences_tensor, test_targets_tensor, batch_size=batch_size)
-
+    features = parameters['features'] 
     input_size = len(features)
-    hidden_size = 32 
-    num_layers = 2
-    num_classes = 1
+    hidden_size = parameters['hidden_size']
+    num_layers = parameters['num_layers']
+    num_classes = parameters['num_classes']
+
     model = RNN(input_size, hidden_size, num_layers, num_classes)
-    learning_rate = 0.0001
+    learning_rate = parameters['learning_rate']
+
     criterion, optimizer = setup_training(model, learning_rate=learning_rate, device=device)
 
-    num_epochs = 10
-    checkpoint_dir = './checkpoints'
-    ensure_dir(checkpoint_dir)
-    session_timestamp = time.strftime("%Y%m%d-%H%M%S")
-    session_checkpoint_dir = os.path.join(checkpoint_dir, f'training_session_{session_timestamp}')
-    ensure_dir(session_checkpoint_dir)
-    run_directory = setup_directory(session_checkpoint_dir, f'importance_{session_timestamp}')
-
+    num_epochs = parameters['num_epochs']
     training_losses = []
     validation_rmses = []
 
@@ -279,12 +248,7 @@ def main():
 
         print(f'Epoch {epoch+1}, Training Loss: {avg_training_loss}, Validation RMSE: {val_rmse}')
 
-        save_checkpoint(epoch, model, optimizer, avg_training_loss, val_rmse, session_checkpoint_dir)
-
-        # calculated feature importances
-        torch.backends.cudnn.enabled = False
-        spec_exp_imp(data_set, features, model, device, run_directory, sequence_length, specific_exp_no= 0, epoch_no=epoch)
-
-        if (epoch + 1) % 5 == 0:
-            plot_metrics(training_losses, validation_rmses, epoch, session_checkpoint_dir)
+    # Save the model
+    model.eval()
+    return model
 
