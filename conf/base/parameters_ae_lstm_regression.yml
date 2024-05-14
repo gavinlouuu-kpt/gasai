@@ -1,0 +1,18 @@
+ae_lstm_model_options:
+  target_column: resistance_ratio
+  sequence_length: 100
+  step_size: 1
+  ae_batch_size: 64
+  lstm_batch_size: 32
+  hidden_size: 32
+  num_layers: 2
+  num_classes: 1
+  ae_learning_rate: 0.0001
+  lstm_learning_rate: 0.0001
+  ae_num_epochs: 10
+  lstm_num_epochs: 10
+  encoding_dim: 64
+  feature_columns:
+    - timestamp_bin
+    - A1_Resistance
+

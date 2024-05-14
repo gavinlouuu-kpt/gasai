@@ -190,7 +190,6 @@ def train_model(train_loader, test_loader, parameters: Dict):
     return model
 
 
-# 
 def sequence_generate_and_split(data_set, parameters, test_size=0.2, random_state=42):
     # Extract relevant parameters
     features = parameters['features']

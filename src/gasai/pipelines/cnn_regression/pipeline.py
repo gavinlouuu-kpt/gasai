@@ -4,7 +4,7 @@ generated using Kedro 0.19.5
 """
 
 from kedro.pipeline import Pipeline, pipeline, node
-from .nodes import prepare_data, create_ResistanceDataset, wrap_loader, train_model, sliding_data
+from .nodes import train_model, sliding_data
 
 # # Extended data processing and loading functions with no sliding window
 # def create_pipeline(**kwargs) -> Pipeline:
