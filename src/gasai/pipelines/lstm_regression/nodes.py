@@ -38,50 +38,57 @@ from captum.attr import IntegratedGradients
 #         return out
 
 
-class IndependentRNN(nn.Module):
-    def __init__(self, input_size, hidden_size, num_layers, num_classes, dropout_prob=0.5, batch_norm_momentum=0.1):
-        super(IndependentRNN, self).__init__()
-        self.hidden_size = hidden_size
+# class RNN(nn.Module):
+#     def __init__(self, input_size, hidden_size, num_layers, num_classes, dropout_prob=0, batch_norm_momentum=0.1):
+#         super(RNN, self).__init__()
+#         self.num_layers = num_layers
+#         self.hidden_size = hidden_size
+#         self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True, dropout=dropout_prob)
+#         self.batch_norm = nn.BatchNorm1d(hidden_size, momentum=batch_norm_momentum)
+#         self.dropout = nn.Dropout(dropout_prob)
+#         self.fc = nn.Linear(hidden_size, num_classes)
         
-        layers = []
-        for _ in range(num_layers):
-            layers.append(nn.Linear(input_size, hidden_size))
-            layers.append(nn.BatchNorm1d(hidden_size, momentum=batch_norm_momentum))
-            layers.append(nn.ReLU())
-            # layers.append(nn.Dropout(dropout_prob))
-            input_size = hidden_size
+#     def forward(self, x):
+#         # Set initial hidden states (and cell states for LSTM)
+#         device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
+#         h0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(device) 
+#         c0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(device) 
+#         out, _ = self.lstm(x, (h0, c0))
         
-        self.layers = nn.Sequential(*layers)
-        self.fc = nn.Linear(hidden_size, num_classes)
+#         # Apply batch normalization
+#         out = out[:, -1, :]  # take the output of the last time step
+#         out = self.batch_norm(out)
         
-    def forward(self, x):
-        out = self.layers(x)
-        out = self.fc(out)
-        return out
-
-# Example usage:
-# model = IndependentRNN(input_size=10, hidden_size=20, num_layers=2, num_classes=5, dropout_prob=0.5, batch_norm_momentum=0.1)
+#         # Apply dropout
+#         out = self.dropout(out)
+        
+#         out = self.fc(out)
+#         return out
 
 
-class RNN(nn.Module):
-    def __init__(self, input_size, hidden_size, num_layers, num_classes, dropout_prob=0, batch_norm_momentum=0.1):
-        super(RNN, self).__init__()
+class IndependentLSTM(nn.Module):
+    def __init__(self, input_size, hidden_size, num_layers, num_classes, dropout_prob=0.5, batch_norm_momentum=0.1, bidirectional=True):
+        super(IndependentLSTM, self).__init__()
         self.num_layers = num_layers
         self.hidden_size = hidden_size
-        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True, dropout=dropout_prob)
-        self.batch_norm = nn.BatchNorm1d(hidden_size, momentum=batch_norm_momentum)
+        self.bidirectional = bidirectional
+        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True, bidirectional=bidirectional)
+        self.batch_norm = nn.BatchNorm1d(hidden_size * (2 if bidirectional else 1), momentum=batch_norm_momentum)
         self.dropout = nn.Dropout(dropout_prob)
-        self.fc = nn.Linear(hidden_size, num_classes)
+        self.fc = nn.Linear(hidden_size * (2 if bidirectional else 1), num_classes)
         
     def forward(self, x):
-        # Set initial hidden states (and cell states for LSTM)
         device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
-        h0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(device) 
-        c0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(device) 
+        
+        # Set initial hidden states (and cell states for LSTM)
+        h0 = torch.zeros(self.num_layers * (2 if self.bidirectional else 1), x.size(0), self.hidden_size).to(device)
+        c0 = torch.zeros(self.num_layers * (2 if self.bidirectional else 1), x.size(0), self.hidden_size).to(device)
+        
+        # Forward propagate LSTM
         out, _ = self.lstm(x, (h0, c0))
         
         # Apply batch normalization
-        out = out[:, -1, :]  # take the output of the last time step
+        out = out[:, -1, :]  # Take the output of the last time step
         out = self.batch_norm(out)
         
         # Apply dropout
@@ -91,7 +98,7 @@ class RNN(nn.Module):
         return out
 
 # Example usage:
-# model = RNN(input_size=10, hidden_size=20, num_layers=2, num_classes=5, dropout_prob=0.5, batch_norm_momentum=0.1)
+# model = IndependentLSTM(input_size=10, hidden_size=20, num_layers=2, num_classes=1, dropout_prob=0.5, batch_norm_momentum=0.1, bidirectional=True)
 
 
 def ensure_dir(directory):
@@ -123,6 +130,29 @@ def setup_training(model, learning_rate, device):
 #     return avg_training_loss
 
 # reset states
+
+
+
+# def validate(model, test_loader, criterion, device):
+#     model.eval()
+#     total_val_loss = 0
+#     count = 0
+#     with torch.no_grad():
+#         for sequences_batch, targets_batch in test_loader:
+#             sequences_batch = sequences_batch.to(device)
+#             targets_batch = targets_batch.to(device).unsqueeze(-1)
+            
+#             outputs = model(sequences_batch)
+#             loss = criterion(outputs, targets_batch)
+            
+#             total_val_loss += loss.item()
+#             count += 1
+    
+#     avg_val_loss = total_val_loss / count
+#     return avg_val_loss
+
+
+# reset states
 def train_epoch(model, train_loader, criterion, optimizer, device):
     model.train()
     running_loss = 0.0
@@ -130,8 +160,8 @@ def train_epoch(model, train_loader, criterion, optimizer, device):
         inputs, labels = inputs.to(device), labels.to(device)
 
         # Reset the hidden and cell states
-        h0 = torch.zeros(model.num_layers, inputs.size(0), model.hidden_size).to(device)
-        c0 = torch.zeros(model.num_layers, inputs.size(0), model.hidden_size).to(device)
+        h0 = torch.zeros(model.num_layers * (2 if model.bidirectional else 1), inputs.size(0), model.hidden_size).to(device)
+        c0 = torch.zeros(model.num_layers * (2 if model.bidirectional else 1), inputs.size(0), model.hidden_size).to(device)
 
         optimizer.zero_grad()
 
@@ -157,28 +187,6 @@ def train_epoch(model, train_loader, criterion, optimizer, device):
     avg_loss = running_loss / len(train_loader.dataset)
     return avg_loss
 
-
-
-# def validate(model, test_loader, criterion, device):
-#     model.eval()
-#     total_val_loss = 0
-#     count = 0
-#     with torch.no_grad():
-#         for sequences_batch, targets_batch in test_loader:
-#             sequences_batch = sequences_batch.to(device)
-#             targets_batch = targets_batch.to(device).unsqueeze(-1)
-            
-#             outputs = model(sequences_batch)
-#             loss = criterion(outputs, targets_batch)
-            
-#             total_val_loss += loss.item()
-#             count += 1
-    
-#     avg_val_loss = total_val_loss / count
-#     return avg_val_loss
-
-
-# reset states
 def validate(model, test_loader, criterion, device):
     model.eval()
     running_loss = 0.0
@@ -187,8 +195,8 @@ def validate(model, test_loader, criterion, device):
             inputs, labels = inputs.to(device), labels.to(device)
 
             # Reset the hidden and cell states
-            h0 = torch.zeros(model.num_layers, inputs.size(0), model.hidden_size).to(device)
-            c0 = torch.zeros(model.num_layers, inputs.size(0), model.hidden_size).to(device)
+            h0 = torch.zeros(model.num_layers * (2 if model.bidirectional else 1), inputs.size(0), model.hidden_size).to(device)
+            c0 = torch.zeros(model.num_layers * (2 if model.bidirectional else 1), inputs.size(0), model.hidden_size).to(device)
 
             # Forward pass
             outputs, _ = model.lstm(inputs, (h0, c0))
@@ -291,7 +299,7 @@ def train_model(train_loader, test_loader, parameters: Dict):
     num_layers = parameters['num_layers']
     num_classes = parameters['num_classes']
 
-    model = RNN(input_size, hidden_size, num_layers, num_classes)
+    model = IndependentLSTM(input_size, hidden_size, num_layers, num_classes)
     learning_rate = parameters['learning_rate']
 
     criterion, optimizer = setup_training(model, learning_rate=learning_rate, device=device)
