@@ -66,13 +66,18 @@ from captum.attr import IntegratedGradients
 #         return out
 
 
-class IndependentLSTM(nn.Module):
-    def __init__(self, input_size, hidden_size, num_layers, num_classes, dropout_prob=0.5, batch_norm_momentum=0.1, bidirectional=True):
-        super(IndependentLSTM, self).__init__()
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+class AttentionLSTM(nn.Module):
+    def __init__(self, input_size, hidden_size, num_layers, num_classes, dropout_prob=0, batch_norm_momentum=0.1, bidirectional=False):
+        super(AttentionLSTM, self).__init__()
         self.num_layers = num_layers
         self.hidden_size = hidden_size
         self.bidirectional = bidirectional
         self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True, bidirectional=bidirectional)
+        self.attention = nn.Linear(hidden_size * (2 if bidirectional else 1), 1)
         self.batch_norm = nn.BatchNorm1d(hidden_size * (2 if bidirectional else 1), momentum=batch_norm_momentum)
         self.dropout = nn.Dropout(dropout_prob)
         self.fc = nn.Linear(hidden_size * (2 if bidirectional else 1), num_classes)
@@ -87,15 +92,26 @@ class IndependentLSTM(nn.Module):
         # Forward propagate LSTM
         out, _ = self.lstm(x, (h0, c0))
         
+        # Calculate attention weights
+        attn_weights = torch.tanh(self.attention(out))
+        attn_weights = F.softmax(attn_weights, dim=1)
+        
+        # Compute context vector as weighted sum of hidden states
+        context_vector = torch.sum(attn_weights * out, dim=1)
+        
         # Apply batch normalization
-        out = out[:, -1, :]  # Take the output of the last time step
-        out = self.batch_norm(out)
+        context_vector = self.batch_norm(context_vector)
         
         # Apply dropout
-        out = self.dropout(out)
+        context_vector = self.dropout(context_vector)
         
-        out = self.fc(out)
+        # Fully connected layer
+        out = self.fc(context_vector)
         return out
+
+# Example usage:
+# model = AttentionLSTM(input_size=10, hidden_size=20, num_layers=2, num_classes=1, dropout_prob=0.5, batch_norm_momentum=0.1, bidirectional=True)
+
 
 # Example usage:
 # model = IndependentLSTM(input_size=10, hidden_size=20, num_layers=2, num_classes=1, dropout_prob=0.5, batch_norm_momentum=0.1, bidirectional=True)
@@ -159,18 +175,10 @@ def train_epoch(model, train_loader, criterion, optimizer, device):
     for inputs, labels in train_loader:
         inputs, labels = inputs.to(device), labels.to(device)
 
-        # Reset the hidden and cell states
-        h0 = torch.zeros(model.num_layers * (2 if model.bidirectional else 1), inputs.size(0), model.hidden_size).to(device)
-        c0 = torch.zeros(model.num_layers * (2 if model.bidirectional else 1), inputs.size(0), model.hidden_size).to(device)
-
         optimizer.zero_grad()
 
         # Forward pass
-        outputs, _ = model.lstm(inputs, (h0, c0))
-        outputs = outputs[:, -1, :]  # Take the output of the last time step
-        outputs = model.batch_norm(outputs)
-        outputs = model.dropout(outputs)
-        outputs = model.fc(outputs)
+        outputs = model(inputs)
         
         # Ensure the output and labels have the same shape
         outputs = outputs.squeeze()
@@ -194,16 +202,8 @@ def validate(model, test_loader, criterion, device):
         for inputs, labels in test_loader:
             inputs, labels = inputs.to(device), labels.to(device)
 
-            # Reset the hidden and cell states
-            h0 = torch.zeros(model.num_layers * (2 if model.bidirectional else 1), inputs.size(0), model.hidden_size).to(device)
-            c0 = torch.zeros(model.num_layers * (2 if model.bidirectional else 1), inputs.size(0), model.hidden_size).to(device)
-
             # Forward pass
-            outputs, _ = model.lstm(inputs, (h0, c0))
-            outputs = outputs[:, -1, :]  # Take the output of the last time step
-            outputs = model.batch_norm(outputs)
-            outputs = model.dropout(outputs)
-            outputs = model.fc(outputs)
+            outputs = model(inputs)
             
             # Ensure the output and labels have the same shape
             outputs = outputs.squeeze()
@@ -215,6 +215,7 @@ def validate(model, test_loader, criterion, device):
 
     avg_loss = running_loss / len(test_loader.dataset)
     return avg_loss
+
 
 
 import torch
@@ -299,7 +300,7 @@ def train_model(train_loader, test_loader, parameters: Dict):
     num_layers = parameters['num_layers']
     num_classes = parameters['num_classes']
 
-    model = IndependentLSTM(input_size, hidden_size, num_layers, num_classes)
+    model = AttentionLSTM(input_size, hidden_size, num_layers, num_classes)
     learning_rate = parameters['learning_rate']
 
     criterion, optimizer = setup_training(model, learning_rate=learning_rate, device=device)

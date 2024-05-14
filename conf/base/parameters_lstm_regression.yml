@@ -9,7 +9,7 @@ lstm_model_options:
   step_size: 1
   batch_size: 32
   hidden_size: 32
-  num_layers: 2
+  num_layers: 4
   num_classes: 1
   learning_rate: 0.001
   num_epochs: 20
