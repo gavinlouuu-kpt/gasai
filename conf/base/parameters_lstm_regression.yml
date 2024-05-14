@@ -12,7 +12,7 @@ lstm_model_options:
   num_layers: 2
   num_classes: 1
   learning_rate: 0.001
-  num_epochs: 10
+  num_epochs: 20
   features:
     - timestamp_bin
     - A1_Resistance
