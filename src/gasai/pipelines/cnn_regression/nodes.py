@@ -14,33 +14,75 @@ from typing import Dict
 import pandas as pd
 import numpy as np
 
-    
+
+
 class CNNModel(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size, mid_channels, num_classes):
+    def __init__(self, in_channels, out_channels, kernel_size, mid_channels, num_classes, dropout_prob=0):
         super(CNNModel, self).__init__()
+        
         # First convolution layer
         self.conv1 = nn.Conv1d(in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size, padding=1)
+        self.bn1 = nn.BatchNorm1d(out_channels)
         
-        # Second convolution layer - making mid_channels (intermediate output channels) configurable
+        # Second convolution layer
         self.conv2 = nn.Conv1d(in_channels=out_channels, out_channels=mid_channels, kernel_size=3, padding=1)
+        self.bn2 = nn.BatchNorm1d(mid_channels)
+        
+        # Additional convolution layer
+        self.conv3 = nn.Conv1d(in_channels=mid_channels, out_channels=mid_channels, kernel_size=3, padding=1)
+        self.bn3 = nn.BatchNorm1d(mid_channels)
         
         # Adaptive pooling
         self.adaptive_pool = nn.AdaptiveAvgPool1d(1)
         
-        # First fully connected layer
-        self.fc1 = nn.Linear(mid_channels, mid_channels // 2)  # dynamically setting size based on mid_channels
+        # Fully connected layers
+        self.fc1 = nn.Linear(mid_channels, mid_channels // 2)
+        self.fc2 = nn.Linear(mid_channels // 2, num_classes)
         
-        # Second fully connected layer
-        self.fc2 = nn.Linear(mid_channels // 2, num_classes)  # output size is now the number of classes
+        # Dropout
+        self.dropout = nn.Dropout(dropout_prob)
 
     def forward(self, x):
-        x = F.relu(self.conv1(x))
-        x = F.relu(self.conv2(x))
+        x = F.relu(self.bn1(self.conv1(x)))
+        x = F.relu(self.bn2(self.conv2(x)))
+        x = F.relu(self.bn3(self.conv3(x)))
         x = self.adaptive_pool(x)
         x = torch.flatten(x, 1)
         x = F.relu(self.fc1(x))
+        x = self.dropout(x)  # Apply dropout
         x = self.fc2(x)
-        return x.squeeze() # remove the extra dimension
+        return x.squeeze()  # Remove the extra dimension
+
+# Example usage:
+# model = CNNModel(in_channels=1, out_channels=64, kernel_size=3, mid_channels=128, num_classes=10, dropout_prob=0.5)
+
+    
+# class CNNModel(nn.Module):
+#     def __init__(self, in_channels, out_channels, kernel_size, mid_channels, num_classes):
+#         super(CNNModel, self).__init__()
+#         # First convolution layer
+#         self.conv1 = nn.Conv1d(in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size, padding=1)
+        
+#         # Second convolution layer - making mid_channels (intermediate output channels) configurable
+#         self.conv2 = nn.Conv1d(in_channels=out_channels, out_channels=mid_channels, kernel_size=3, padding=1)
+        
+#         # Adaptive pooling
+#         self.adaptive_pool = nn.AdaptiveAvgPool1d(1)
+        
+#         # First fully connected layer
+#         self.fc1 = nn.Linear(mid_channels, mid_channels // 2)  # dynamically setting size based on mid_channels
+        
+#         # Second fully connected layer
+#         self.fc2 = nn.Linear(mid_channels // 2, num_classes)  # output size is now the number of classes
+
+#     def forward(self, x):
+#         x = F.relu(self.conv1(x))
+#         x = F.relu(self.conv2(x))
+#         x = self.adaptive_pool(x)
+#         x = torch.flatten(x, 1)
+#         x = F.relu(self.fc1(x))
+#         x = self.fc2(x)
+#         return x.squeeze() # remove the extra dimension
 
 def sequence_generate_and_split(data_set, parameters, test_size=0.2, random_state=42):
     # Extract relevant parameters
